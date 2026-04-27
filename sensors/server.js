@@ -2,207 +2,89 @@ const express = require('express');
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// ✅ تفعيل CORS بشكل متقدم للسماح لـ Frontend بالاتصال
-app.use(cors({
-    origin: [
-        'https://livocare-frontend.onrender.com',
-        'https://livocare-fronend.vercel.app',
-        'https://livocare-frontend.vercel.app',
-        'http://localhost:5173',
-        'http://localhost:3000',
-        // ✅ إضافة رابط Frontend الحالي
-        'https://livocare-fronend.onrender.com'
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
+// ✅ تأكد من قراءة JSON
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ دعم preflight requests (OPTIONS)
-app.options('*', cors());
-
-app.use(express.json({ limit: '10mb' }));
-
-// تخزين القراءات
+// ✅ تخزين القراءات
 let readings = [];
-let lastReadTime = null;
 
-// ✅ استقبال البيانات من ESP32
+// ✅ مسار استقبال البيانات (الأهم)
 app.post('/api/readings', (req, res) => {
-    console.log('📥 Received body:', req.body);
+    console.log('📥 POST received!');
+    console.log('📦 Headers:', req.headers);
+    console.log('📦 Body:', req.body);
     
-    const bpm = req.body.bpm || req.body.heart_rate || req.body.heartRate;
-    const spo2 = req.body.spo2 || req.body.oxygen;
-    
-    console.log(`📊 Extracted - BPM: ${bpm}, SpO2: ${spo2}`);
+    const bpm = req.body.bpm;
+    const spo2 = req.body.spo2;
     
     if (!bpm || !spo2) {
         console.log('❌ Missing bpm or spo2');
-        return res.status(400).json({ 
-            status: 'error', 
-            message: 'Missing bpm or spo2',
-            received: req.body
-        });
+        return res.status(400).json({ error: 'Missing bpm or spo2', received: req.body });
     }
     
-    // التحقق من صحة القيم
-    const bpmNum = parseInt(bpm);
-    const spo2Num = parseInt(spo2);
-    
-    if (isNaN(bpmNum) || isNaN(spo2Num)) {
-        return res.status(400).json({ 
-            status: 'error', 
-            message: 'Invalid numeric values',
-            bpm, spo2
-        });
-    }
-    
-    if (bpmNum < 30 || bpmNum > 220) {
-        return res.status(400).json({ 
-            status: 'error', 
-            message: 'BPM out of range (30-220)',
-            value: bpmNum
-        });
-    }
-    
-    if (spo2Num < 50 || spo2Num > 100) {
-        return res.status(400).json({ 
-            status: 'error', 
-            message: 'SpO2 out of range (50-100)',
-            value: spo2Num
-        });
-    }
-
     const newReading = {
-        id: readings.length + 1,
-        bpm: bpmNum,
-        spo2: spo2Num,
+        bpm: parseInt(bpm),
+        spo2: parseInt(spo2),
         timestamp: new Date().toISOString()
     };
-
+    
     readings.push(newReading);
     
-    // الاحتفاظ بآخر 100 قراءة فقط لتوفير الذاكرة
-    if (readings.length > 100) {
-        readings = readings.slice(-100);
-    }
+    // احتفظ بآخر 50 قراءة فقط
+    if (readings.length > 50) readings.shift();
     
-    lastReadTime = new Date();
+    console.log(`✅ Saved: BPM=${newReading.bpm}, SpO2=${newReading.spo2}`);
+    console.log(`📊 Total readings: ${readings.length}`);
     
-    console.log(`✅ Saved: BPM: ${bpmNum}, SpO2: ${spo2Num}%`);
-    console.log(`📦 Total readings: ${readings.length}`);
-
-    res.status(200).json({ 
-        status: 'success', 
-        data: newReading 
-    });
+    res.json({ success: true, data: newReading });
 });
 
-// ✅ آخر قراءة (محسّن)
+// ✅ جلب آخر قراءة
 app.get('/api/readings/latest', (req, res) => {
-    console.log('📖 GET /api/readings/latest');
+    console.log('📖 GET /latest - Total readings:', readings.length);
     
     if (readings.length === 0) {
-        return res.json({ 
-            status: 'success', 
-            data: null,
-            message: 'No readings available yet'
-        });
+        return res.json({ status: 'success', data: null, message: 'No readings available yet' });
     }
     
     const latest = readings[readings.length - 1];
-    res.json({ 
-        status: 'success', 
-        data: latest,
-        lastUpdate: lastReadTime
-    });
+    res.json({ status: 'success', data: latest });
 });
 
-// ✅ جميع القراءات (مع دعم pagination)
+// ✅ جلب جميع القراءات
 app.get('/api/readings/all', (req, res) => {
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
-    
-    const paginatedReadings = readings.slice(-limit - offset, readings.length - offset);
-    
-    console.log(`📖 GET /api/readings/all - limit: ${limit}, offset: ${offset}`);
-    
-    res.json({ 
-        status: 'success', 
-        count: readings.length,
-        returned: paginatedReadings.length,
-        data: paginatedReadings.reverse() // الأحدث أولاً
-    });
+    res.json({ status: 'success', count: readings.length, data: readings });
 });
 
-// ✅ إحصائيات القراءات
-app.get('/api/readings/stats', (req, res) => {
-    if (readings.length === 0) {
-        return res.json({ 
-            status: 'success', 
-            data: null,
-            message: 'No readings available'
-        });
-    }
-    
-    const bpmValues = readings.map(r => r.bpm);
-    const spo2Values = readings.map(r => r.spo2);
-    
-    const avgBpm = Math.round(bpmValues.reduce((a, b) => a + b, 0) / bpmValues.length);
-    const avgSpo2 = Math.round(spo2Values.reduce((a, b) => a + b, 0) / spo2Values.length);
-    
-    const minBpm = Math.min(...bpmValues);
-    const maxBpm = Math.max(...bpmValues);
-    const minSpo2 = Math.min(...spo2Values);
-    const maxSpo2 = Math.max(...spo2Values);
-    
-    res.json({
-        status: 'success',
-        data: {
-            total: readings.length,
-            avgBpm, avgSpo2,
-            minBpm, maxBpm,
-            minSpo2, maxSpo2,
-            latest: readings[readings.length - 1],
-            lastUpdate: lastReadTime
-        }
-    });
-});
-
-// ✅ صحة الخدمة
+// ✅ فحص صحة الخادم
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        totalReadings: readings.length,
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString()
-    });
+    res.json({ status: 'ok', totalReadings: readings.length, uptime: process.uptime() });
 });
 
-// ✅ مسح جميع القراءات (للإدارة)
-app.delete('/api/readings', (req, res) => {
-    const deletedCount = readings.length;
-    readings = [];
-    lastReadTime = null;
-    console.log(`🗑️ Deleted ${deletedCount} readings`);
-    res.json({ status: 'success', deletedCount });
-});
-
-// ✅ معالجة الأخطاء العامة
-app.use((err, req, res, next) => {
-    console.error('❌ Server error:', err);
-    res.status(500).json({ 
-        status: 'error', 
-        message: 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+// ✅ صفحة رئيسية للاختبار
+app.get('/', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>ESP32 Sensor API</title></head>
+        <body style="font-family: Arial; padding: 20px;">
+            <h1>🫀 ESP32 Sensor API</h1>
+            <p>Status: <span style="color: green;">✅ Running</span></p>
+            <p>Total readings: <strong>${readings.length}</strong></p>
+            <p>Latest: ${readings.length > 0 ? `${readings[readings.length-1].bpm} BPM, ${readings[readings.length-1].spo2}%` : 'None'}</p>
+            <hr>
+            <p><a href="/api/readings/latest">📊 Latest Reading</a> | <a href="/api/readings/all">📋 All Readings</a></p>
+        </body>
+        </html>
+    `);
 });
 
 // ✅ تشغيل الخادم
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ ESP32 Sensor Server running on port ${PORT}`);
-    console.log(`📍 Health check: http://localhost:${PORT}/health`);
-    console.log(`📍 POST readings: http://localhost:${PORT}/api/readings`);
+    console.log(`📍 URL: https://esp32-sensor-api.onrender.com`);
 });

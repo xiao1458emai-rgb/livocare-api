@@ -3,25 +3,24 @@ const cors = require('cors');
 
 const app = express();
 
-// ✅ التكوين الصحيح لـ CORS
-app.use(cors({
-    origin: '*',  // مؤقتاً للاختبار - اسمح للجميع
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// ✅ بديل أكثر أماناً (للإنتاج):
-// app.use(cors({
-//     origin: ['https://livocare-frontend.onrender.com', 'https://livocare-backend.onrender.com'],
-//     methods: ['GET', 'POST'],
-//     allowedHeaders: ['Content-Type']
-// }));
+// ✅ حل جذري لـ CORS - يسمح لأي نطاق بالاتصال
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 app.use(express.json());
 
 let readings = [];
 
-// ✅ مسار استقبال البيانات من ESP32
+// ✅ استقبال البيانات من ESP32
 app.post('/api/readings', (req, res) => {
     const { bpm, spo2 } = req.body;
     
@@ -42,7 +41,7 @@ app.post('/api/readings', (req, res) => {
     res.json({ status: 'success', data: reading });
 });
 
-// ✅ مسار جلب آخر قراءة
+// ✅ جلب آخر قراءة
 app.get('/api/readings/latest', (req, res) => {
     if (readings.length === 0) {
         return res.json({ status: 'success', data: null });
@@ -51,16 +50,13 @@ app.get('/api/readings/latest', (req, res) => {
     res.json({ status: 'success', data: latest });
 });
 
-// ✅ مسار جلب جميع القراءات
+// ✅ جلب جميع القراءات
 app.get('/api/readings/all', (req, res) => {
     res.json({ status: 'success', count: readings.length, data: readings });
 });
 
-// ✅ معالجة طلبات OPTIONS مسبقاً
-app.options('*', cors());
-
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
-    console.log(`CORS enabled for all origins (temporary)`);
+    console.log(`✅ CORS enabled - Accepting requests from any origin`);
 });

@@ -21,7 +21,13 @@ webpush.setVapidDetails(
 let subscriptions = {}; // { userId: [{ subscription, lang }] }
 
 app.use(cors({
-    origin: ['https://livocare-fronend.onrender.com', 'https://livocare.onrender.com', 'http://localhost:3000'],
+    origin: [
+        'https://livocare-frontend.onrender.com',   // ✅ التصحيح: frontend
+        'https://livocare-backend.onrender.com',    // ✅ إضافة backend
+        'https://livocare.onrender.com',
+        'http://localhost:3000',
+        'http://localhost:5173'
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -141,7 +147,7 @@ app.post('/notify/:userId', async (req, res) => {
             const payload = JSON.stringify({
                 title: finalTitle,
                 body: finalBody,
-                icon: icon || 'https://livocare-fronend.onrender.com/logo192.png',
+                icon: icon || 'https://livocare-frontend.onrender.com/logo192.png',
                 url: url || '/dashboard'
             });
             
